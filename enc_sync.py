@@ -25,7 +25,7 @@ def get_file_entry(filename):
     # get additional informations for every file
     size = os.path.getsize(filename) # size
     ctime = os.path.getctime(filename) # last modified date
-    enc_filename = "enc" + str(hash(filename)) + ".gpg" # create enc filename (by hashing)
+    enc_filename = 'enc' + str(hash(filename)) + '.gpg' # create enc filename (by hashing)
     return File_Entry(size, ctime, filename, enc_filename)
 
 
@@ -43,15 +43,14 @@ def get_folder_struc(path):
 
 # expects a 2D array with rows containing: [size, ctime, file, enc_filename]
 def write_masterfile(path, folder_struc, password_file):
-    folder_struc.to_json_file(path, indent=4)
-    #text = folder_struc.to_json(indent=4)
-    #print ("write text to " + path + "2")
-    #command = ["gpg", "--symmetric", "--armor", "--batch", '--passphrase-file', password_file, '-o', path + "2"]
-    #out = subprocess.check_output(command, input=text.encode('utf-8'), universal_newlines=False)
-    #print (out)
+    text = folder_struc.to_json()
+    command = ['gpg', '--symmetric', '--armor', '--batch', '--yes', '--passphrase-file', password_file, '-o', path]
+    out = subprocess.check_output(command, input=text.encode('utf-8'))
 
 def read_masterfile(path, password_file):
-    list = File_Entry.from_json_file(path)
+    res = command.run(['gpg', '--batch', '--quiet', '--passphrase-file', password_file, '-d', path])
+    text = res.output.decode("utf-8")
+    list = File_Entry.from_json(text)
 
     folder_struc = Container[File_Entry]()
     for entry in list:
@@ -116,7 +115,7 @@ with open(password_file, 'r') as f:
     password = f.read()
 
 # read existing masterfile
-backup_master_filename = backup_folder + "/backup_master.json"
+backup_master_filename = backup_folder + "/backup_master.gpg"
 backup_file_folder = backup_folder + "/"
 if os.path.isfile(backup_master_filename):
     backup_struct = read_masterfile(backup_master_filename, password_file)
