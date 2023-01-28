@@ -1,0 +1,2 @@
+command
+dataclass_wizard

@@ -25,6 +25,7 @@ class File_Entry(JSONListWizard, JSONFileWizard):
     enc_size: int # with this size we can assure, that the backup files are not corrupted. We can use this number to check every run that all files are valid
 
 ###############################################
+
 def get_file_entry(filename):
     # get additional informations for every file
     size = os.path.getsize(filename) # size
@@ -34,17 +35,52 @@ def get_file_entry(filename):
     logging.log(1, file_entry)
     return file_entry
 
-def get_folder_struc(path):
+def get_folder_struc(src_folder, backup_folder):
     # get file list
-    res = command.run(['find', path, '-type', 'f'])
-    file_list = res.output.decode("utf-8")
+    backup_scan = os.scandir(backup_folder)
+    # I try to reduce the system calls to increase performance.
+    # Especionally the remote file systems tends to take a long time handling calls, so I ask as much as possible in one block
+    # In the backup folder there is no folder structure, so one request gives all the answers
 
-    # create nice Container with beautiful File_Entry dataclasses
-    folder_struc = Container[File_Entry]()
-    for filename in file_list.split("\n"):
-        folder_struc.append(get_file_entry(filename))
+    # to increase request time, the backup_scan is parsed into an dictionary
+    backup_dict = {}
+    for backup_item in backup_scan:
+        backup_dict[backup_item.name] = backup_item.stat().st_size
 
-    return folder_struc
+    # I am really worried by some stupid mistake I'm goint to delete my backup_master.gpg
+    # to prevent this, I remove it from the "real" backup_dict completely
+    if "backup_master.gpg" in backup_scan:
+        del backup_dict["backup_master.gpg"]
+
+    return get_folder_struc_rec(src_folder, backup_dict), backup_dict
+
+# Hopefully there will be a method to scandirs recursive soon
+# os.walk is not useful since it doesn't deliver the files size and ctime
+def get_folder_struc_rec(rec_scan, backup_dict):
+    for file in os.scandir(rec_scan):
+        if file.name.startswith('.'):
+            # skip hidden files
+            # we check this before we handle folders, so hidden folders will be skipped aswell
+            continue
+
+        filename = file.path
+        if file.is_dir():
+            # go deeper on folders
+            yield from get_folder_struc_rec(filename, backup_folder)
+            continue
+
+        enc_filename = 'enc-' + sha256(filename.encode('utf-8')).hexdigest() + '.gpg' # create enc filename (by hashing)
+        if enc_filename not in backup_dict:
+            # no backup file found. This normally happens, when the file is not backuped yet
+            # but it could also mean, that we lost the backuped file or it is corrupted.
+            # to notify this cases, the file size is used
+            enc_size = 0
+        else:
+            enc_size = backup_dict[enc_filename]
+            del backup_dict[enc_filename] # by deleting the entry at this point, we can use the remaining entries later to determine lost+found files in the backup directory
+
+        yield File_Entry(file.stat().st_size, file.stat().st_ctime, filename, enc_filename, enc_size)
+        print("test")
 
 ###############################################
 
@@ -167,7 +203,10 @@ else:
         #exit()
 
 # read existing src folder struct
-src_struct = get_folder_struc(src_folder)
+src_struct, lost_found_backup_dict = get_folder_struc(src_folder, backup_folder)
+for ele in src_struct:
+    print (ele)
+exit()
 
 ###############################################
 ## DO THE BACKUP ##
