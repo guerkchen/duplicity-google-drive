@@ -1,5 +1,9 @@
 #!/usr/bin/env python3
 
+##############################################
+## IMPORTS ##
+##############################################
+
 import command
 import subprocess
 import os
@@ -13,10 +17,37 @@ import click
 from pathlib import Path
 from cryptography.fernet import Fernet
 import logging
+import configparser
 
+##############################################
+## GLOBAL VARIABLES ##
+##############################################
+
+# DEFAULT CONFIG (can be changed by config file)
 MASTERFILE_WRITE_TIME_SEC = 120
 MASTERFILE_NAME = "backup_master.gpg"
+LOG_LEVEL = logging.INFO
 TMP_PATH = "/tmp/ebfbf"
+
+# Runtime parameters (these can be changed by command line arguments or config file)
+src_folder = ""
+backup_folder = ""
+password_file = ""
+config_file = ""
+delete = False
+restore = False
+
+# this shit is required to read the debug level from the logfile
+log_level_info = {
+    'DEBUG': logging.DEBUG, 
+    'INFO': logging.INFO,
+    'WARNING': logging.WARNING,
+    'ERROR': logging.ERROR,
+    }
+
+##############################################
+## CUSTOM CLASSES ##
+##############################################
 
 @dataclass
 class File_Entry(JSONListWizard, JSONFileWizard):
@@ -26,7 +57,9 @@ class File_Entry(JSONListWizard, JSONFileWizard):
     enc_filename: str
     enc_size: int # with this size we can assure, that the backup files are not corrupted. We can use this number to check every run that all files are valid
 
-###############################################
+##############################################
+## FILE ENTRY METHODS ##
+##############################################
 
 def get_file_entry(filename):
     # get additional informations for every file
@@ -83,7 +116,9 @@ def get_folder_struc_rec(rec_scan, backup_dict):
 
         yield File_Entry(file.stat().st_size, file.stat().st_ctime, filename, enc_filename, enc_size)
 
-###############################################
+##############################################
+## MASTERFILE READ AND WRITE ##
+##############################################
 
 # expects a 2D array with rows containing: [size, ctime, file, enc_filename]
 def write_masterfile(path, folder_struc, password_file):
@@ -105,7 +140,9 @@ def read_masterfile(path, password_file):
 
     return folder_struc
 
-###############################################
+##############################################
+## BACKUP AND RESTORE ##
+##############################################
 
 def encrypt_and_backup(src_file, backup_folder, backup_filename, password_file):
     # the backup file is created on the local machine and copied to the backup location later, this is significant faster
@@ -146,52 +183,92 @@ def convert_into_dictionary(folder_struc):
     return folder_dictionary
 
 ###############################################
-## START OF PROGRAMM ##
 ###############################################
-src_folder = ""
-backup_folder = ""
-password_file = ""
-delete = False
-restore = False
-
-# parameter parsing
-opts, args = getopt.getopt(sys.argv[1:], "dr", ["delete","restore","src=","backup=", "password="])
-for opt, arg in opts:
-      if opt in ('-d', '--delete'):
-          delete = True
-      if opt in ('-r', '--restore'):
-          restore = True
-      elif opt == "--src":
-         src_folder = arg
-      elif opt == "--backup":
-         backup_folder = arg
-      elif opt == "--password":
-         password_file = arg
-
-# how to use it
-if src_folder == "" or backup_folder == "" or password_file == "":
-    print("parameters:")
-    print("--src=<src folder> [REQ]")
-    print("--backup=<backup folder> [REQ]")
-    print("--password=<password file> [REQ]")
-    print("-d or --delete -> enables the delete process of old backup files [OPT]")
-    print("-r or --restore -> recovers old backup files [OPT]")
-    exit()
-
-if delete:
-    print("delete is enabled. Files which are no longer found in the src dir will be deleted in the backup dir")
-
-if restore:
-    print("restore is enabled. Files which are no longer found in the src dir will be restored in the backup dir")
-
+#####  START OF MAIN PROGRAMM  #####
 ###############################################
-## READ & PREPARE STUFF ##
 ###############################################
 
 logging.basicConfig(
     format='%(asctime)s %(levelname)-8s %(message)s',
     level=0,
     datefmt='%Y-%m-%d %H:%M:%S')
+
+# parameter parsing
+opts, args = getopt.getopt(sys.argv[1:], 'dr', ['delete','restore','src=','backup=', 'password=', 'config='])
+
+# we parse for the config file first, so we can read it before we read the other cmd line arguments
+# this way parameters from the config file can be overwritten by cmd line arguments
+for opt, arg in opts:
+    if opt == "--config":
+        config_file = arg
+
+if config_file == "":
+    logging.info("no config file specified, search for './config.ini'")
+    config_file = './config.ini'
+
+if os.path.isfile(config_file):
+    # parse config
+    config = configparser.ConfigParser()
+    config.read(config_file)
+
+    # read config values
+    MASTERFILE_WRITE_TIME_SEC = int(config['CONSTANT']['MASTERFILE_WRITE_TIME_SEC'])
+    MASTERFILE_NAME = config['CONSTANT']['MASTERFILE_NAME']
+    LOG_LEVEL = log_level_info.get(config['CONSTANT']['LOG_LEVEL'], logging.ERROR)
+    TMP_PATH = config['CONSTANT']['TMP_PATH']
+
+    src_folder = config['VARIABLE']['SRC_FOLDER']
+    backup_folder = config['VARIABLE']['BACKUP_FOLDER']
+    password_file = config['VARIABLE']['PASSWORD_FILE']
+    delete = config.getboolean('VARIABLE', 'DELETE')
+    restore = config.getboolean('VARIABLE', 'RESTORE')
+
+elif os.path.normpath(config_file) != os.path.normpath('config.ini'):
+    # if a config file is specified, it must be found, only the default config file can be missed
+    logging.error("configfile '" + config_file + "' not found")
+    exit()
+
+# now read the other cmd line arguments and maybe overwrite some values
+for opt, arg in opts:
+    if opt in ('-d', '--delete'):
+        delete = True
+    if opt in ('-r', '--restore'):
+        restore = True
+    elif opt == "--src":
+        src_folder = arg
+    elif opt == "--backup":
+        backup_folder = arg
+    elif opt == "--password":
+        password_file = arg
+
+# some variables must be filled, either from the config file or the cmd line argument
+if src_folder == "" or backup_folder == "" or password_file == "":
+    logging.error("parameters:")
+    logging.error("--src=<src folder> [REQ]")
+    logging.error("--backup=<backup folder> [REQ]")
+    logging.error("--password=<password file> [REQ]")
+    logging.error("--config=<config file> [OPT] config file parameters are overwritten by cmd line arguments")
+    logging.error("-d or --delete -> enables the delete process of old backup files [OPT]")
+    logging.error("-r or --restore -> recovers old backup files [OPT]")
+    exit()
+
+if delete & restore:
+    logging.error("cannot set parameter delete and restore, only one is allowed")
+    exit()
+
+if delete:
+    logging.info("delete is enabled. Files which are no longer found in the src dir will be deleted in the backup dir")
+
+if restore:
+    logging.info("restore is enabled. Files which are no longer found in the src dir will be restored in the backup dir")
+
+
+###############################################
+## READ & PREPARE STUFF ##
+###############################################
+
+# adjust loglevel
+logging.getLogger().setLevel(LOG_LEVEL)
 
 # read encryption password
 with open(password_file, 'r') as f:
@@ -355,3 +432,7 @@ logging.info("unchanged files: " + str(neutral_files_counter))
 logging.info("removed files: " + str(removed_files_counter))
 logging.info("lost+found files: " + str(lost_found_files_counter))
 logging.info("backuped file count: " + str(len(should_struct)))
+
+###############################################
+## END OF MAIN PROGRAMM ##
+###############################################
