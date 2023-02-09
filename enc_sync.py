@@ -120,12 +120,28 @@ def get_folder_struc_rec(rec_scan, backup_dict):
 ## MASTERFILE READ AND WRITE ##
 ##############################################
 
-# expects a 2D array with rows containing: [size, ctime, file, enc_filename]
+# we do a little Choreography to garantee, there is always a valid backup_master file available
 def write_masterfile(path, folder_struc, password_file):
     logging.debug("save masterfile to backup drive")
+
+    tmp_file = os.path.join(TMP_PATH, MASTERFILE_NAME)
+    old_masterfile_copy = os.path.join(path, ".old")
     text = folder_struc.to_json()
-    command = ['gpg', '--symmetric', '--armor', '--batch', '--yes', '--passphrase-file', password_file, '-o', path]
+
+    # write the encrypted masterfile to the tmp folder
+    logging.log(5, "encrypt masterfile")
+    command = ['gpg', '--symmetric', '--armor', '--batch', '--yes', '--passphrase-file', password_file, '-o', tmp_file]
     out = subprocess.check_output(command, input=text.encode('utf-8'))
+
+    # rename the current masterfile on the backup drive
+    logging.log(5, "backup old masterfile")
+    os.rename(path, old_masterfile_copy)
+
+    logging.log(5, "transfer new masterfile to backup drive")
+    os.move(tmp_file, path)
+
+    logging.log(5, "delete the old masterfile")
+    os.remove(old_masterfile_copy)
 
 
 def read_masterfile(path, password_file):
