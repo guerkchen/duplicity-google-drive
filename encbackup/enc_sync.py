@@ -92,7 +92,6 @@ def get_folder_struc_rec(rec_scan, backup_dict, src_dir):
         if file.name.startswith('.'):
             # skip hidden files
             # we check this before we handle folders, so hidden folders will be skipped aswell
-            yield
             continue
 
         abs_path = file.path
@@ -136,10 +135,10 @@ def write_masterfile(masterfile_abs_path, masterfile_abs_path_old, folder_struc,
     if os.path.isfile(masterfile_abs_path):
         # rename the current masterfile on the backup drive (if it exists)
         logging.log(5, "backup old masterfile")
-        os.rename(masterfile_abs_path, masterfile_abs_path_old)
+        shutil.copyfile(masterfile_abs_path, masterfile_abs_path_old)
 
     logging.log(5, "transfer new masterfile to backup drive")
-    os.rename(tmp_file, masterfile_abs_path)
+    shutil.move(tmp_file, masterfile_abs_path)
 
     if os.path.isfile(masterfile_abs_path_old):
         logging.log(5, "delete the old masterfile")
@@ -173,7 +172,7 @@ def encrypt_and_backup(src_rel_path, src_dir, backup_dir, enc_filename, password
     command.run(['gpg', '--personal-compress-preferences', 'BZIP2', '--symmetric', '--cipher-algo', 'AES-256', '--passphrase-file', password_path, '--batch', '-o', tmp_abs_path, '-c', src_abs_path])
 
     logging.log(5, "backup '" + enc_filename + "'")
-    command.run(['mv', tmp_abs_path, backup_abs_path])
+    shutil.move(tmp_abs_path, backup_abs_path)
 
     enc_size = os.path.getsize(backup_abs_path)
     logging.log(5, "backup finished (" + str(enc_size) + " bytes)")
@@ -351,6 +350,12 @@ def main(argv):
             # write masterfile
             write_masterfile(masterfile_abs_path, masterfile_abs_path_old, should_struct, password_path)
             masterfile_last_written = time.time()
+
+            logging.info("masterfile written, report:")
+            logging.info("new files backuped: " + str(new_files_counter))
+            logging.info("changed files backuped: " + str(changed_files_counter))
+            logging.info("corrupted files: " + str(corrupt_files_counter))
+            logging.info("unchanged files: " + str(neutral_files_counter))
 
         ###############################################
         ## New File ##
