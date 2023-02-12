@@ -37,6 +37,10 @@ config_path = ""
 delete = False
 restore = False
 
+# silent flags to ignore question prompts
+silent_new_backup = False
+silent_old_masterfile = False
+
 # this shit is required to read the debug level from the logfile
 log_level_info = {
     'ALL': 0,
@@ -126,7 +130,7 @@ def write_masterfile(masterfile_abs_path, masterfile_abs_path_old, folder_struc,
 
     # write the encrypted masterfile to the tmp folder
     logging.log(5, "encrypt masterfile")
-    command = ['gpg', '--symmetric', '--armor', '--batch', '--yes', '--passphrase-file', password_path, '-o', tmp_file]
+    command = ['gpg', '--symmetric', '--cipher-algo', 'AES-256', '--armor', '--batch', '--yes', '--personal-compress-preferences', 'BZIP2', '--passphrase-file', password_path, '-o', tmp_file]
     out = subprocess.check_output(command, input=text.encode('utf-8'))
 
     if os.path.isfile(masterfile_abs_path):
@@ -166,7 +170,7 @@ def encrypt_and_backup(src_rel_path, src_dir, backup_dir, enc_filename, password
     backup_abs_path = os.path.join(backup_dir, enc_filename)
 
     logging.log(5, "encrypt '" + src_rel_path + "'")
-    command.run(['gpg', '--passphrase-file', password_path, '--batch', '-o', tmp_abs_path, '-c', src_abs_path])
+    command.run(['gpg', '--personal-compress-preferences', 'BZIP2', '--symmetric', '--cipher-algo', 'AES-256', '--passphrase-file', password_path, '--batch', '-o', tmp_abs_path, '-c', src_abs_path])
 
     logging.log(5, "backup '" + enc_filename + "'")
     command.run(['mv', tmp_abs_path, backup_abs_path])
@@ -210,6 +214,7 @@ def main(argv):
     # DEFAULT CONFIG (can be changed by config file)
     global MASTERFILE_WRITE_TIME_SEC, MASTERFILE_NAME, LOG_LEVEL, TMP_PATH
     global src_dir, backup_dir, password_path, config_path, delete, restore
+    global silent_new_backup, silent_old_masterfile
 
     logging.basicConfig(
         format='%(asctime)s %(levelname)-8s %(message)s',
@@ -246,6 +251,9 @@ def main(argv):
         password_path = config.get('VARIABLE', 'PASSWORD_PATH', fallback=password_path)
         delete = config.getboolean('VARIABLE', 'DELETE', fallback=delete)
         restore = config.getboolean('VARIABLE', 'RESTORE', fallback=restore)
+
+        silent_new_backup = config.getboolean('SILENT', 'NEW_BACKUP', fallback=silent_new_backup)
+        silent_old_masterfile = config.getboolean('SILENT', 'OLD_MASTERFILE', fallback=silent_old_masterfile)
 
     elif os.path.normpath(config_path) != os.path.normpath('config.ini'):
         # if a config file is specified, it must be found, only the default config file can be missed
@@ -309,12 +317,12 @@ def main(argv):
         # master_backup.gpg not found, look for master_backup.gpg.old (backup from the last version)
         if os.path.isfile(masterfile_abs_path_old):
             # when an old version of the masterfile is found, it can be used
-            if click.confirm('Masterfile not found, but an older version is available. Use it?', default=True):
+            if silent_old_masterfile or click.confirm('Masterfile not found, but an older version is available. Use it?', default=True):
                 should_struct = read_masterfile(masterfile_abs_path_old, password_path)
             else:
                 exit()
         else:
-            if click.confirm('No ' + MASTERFILE_NAME + ' found, so I assume, there is no backup. Create a new one?', default=True):
+            if silent_new_backup or click.confirm('No ' + MASTERFILE_NAME + ' found, so I assume, there is no backup. Create a new one?', default=True):
                 Path(backup_dir).mkdir(parents=True, exist_ok=True)
                 # just creat an empty container, so the programm thinks no files are backuped yet
                 should_struct = Container[File_Entry]()
