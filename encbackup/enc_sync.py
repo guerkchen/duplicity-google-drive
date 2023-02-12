@@ -352,9 +352,6 @@ def main(argv):
             new_files_counter += 1
 
             is_entry.enc_size = encrypt_and_backup(is_entry.rel_path, src_dir, backup_dir, is_entry.enc_filename, password_path)
-            # it's crucial that we first finish the file copy and then we update the should_struct
-            # otherwise, if the program is killed during the backup process, the one backup file is corrupted and will not be fixed
-            # This is not completly true, since we use the size of the encrypted file to check if it is valid, but still this way is better
             should_struct.append(is_entry) # we append the is_entry to the should_struct. Later should_struct is written to the masterfile.
             continue # file is handled
         ###############################################
@@ -399,6 +396,7 @@ def main(argv):
         else:
             logging.warning("unfortunately, we lost a src_file and the corresponding backup file. '" + should_entry.rel_path + "' is lost forever")
             should_struct.remove(should_entry)
+            continue
 
         if restore:
             # lets bring it back
