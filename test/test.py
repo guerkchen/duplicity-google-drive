@@ -16,6 +16,7 @@ BACKUP_DIR = 'backup_dir'
 def clean():
     # src_dir
     shutil.rmtree(SRC_DIR, ignore_errors=True)
+    shutil.rmtree(SRC_DIR + "_2", ignore_errors=True)
     shutil.rmtree(BACKUP_DIR, ignore_errors=True)
     shutil.rmtree(CMP_DIR, ignore_errors=True)
     shutil.rmtree("tmp", ignore_errors=True)
@@ -113,6 +114,28 @@ def test_manipulate_delete_restore():
     create_backup(['--restore'])
     compare("test_manipulate_delete_restore")
 
+def test_moved_src_dir():
+    create_backup([])
+
+    # delete orig src
+    shutil.rmtree(SRC_DIR, ignore_errors=True)
+
+    # create new src
+    shutil.rmtree(SRC_DIR + "_2", ignore_errors=True)
+    Path(SRC_DIR + "_2").mkdir(parents=True, exist_ok=True)
+
+    argv = ['./../enc_sync.py', '--src=src_dir_2', '--backup=' + BACKUP_DIR, '--config=test_config.ini'] + ['--restore']
+    enc_sync.main(argv)
+
+    # compare
+    res = command.run(['diff', '-qr', SRC_DIR + "_2", CMP_DIR])
+    text = res.output.decode("utf-8")
+    if text != "":
+        print("test_moved_src_dir error")
+        print(text)
+    else:
+        print("test_moved_src_dir passed")
+
 ##############################################
 ## START OF PROGRAMM ##
 ##############################################
@@ -129,3 +152,5 @@ create_files()
 test_manipulate_delete_restore()
 
 clean()
+create_files()
+test_moved_src_dir()
