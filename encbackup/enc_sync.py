@@ -26,6 +26,8 @@ import configparser
 # DEFAULT CONFIG (can be changed by config file)
 MASTERFILE_WRITE_TIME_SEC = 120
 MASTERFILE_NAME = "backup_master.gpg"
+ENCRYPTION_EXTENSION = ".gpg"
+COMPRESS_EXTENSION = "tar.gz"
 LOG_LEVEL = logging.INFO
 TMP_PATH = "/tmp/ebfbf"
 
@@ -126,7 +128,7 @@ def write_masterfile(masterfile_abs_path, masterfile_abs_path_old, folder_struc,
 
     # write the encrypted masterfile to the tmp folder
     logging.log(5, "encrypt masterfile")
-    command = ['gpg', '--symmetric', '--armor', '--batch', '--yes', '--passphrase-file', password_path, '-o', tmp_file]
+    command = ['gpg', '--symmetric', '--cipher-algo', 'AES-256', '--armor', '--batch', '--yes', '--personal-compress-preferences', 'BZIP2', '--passphrase-file', password_path, '-o', tmp_file]
     out = subprocess.check_output(command, input=text.encode('utf-8'))
 
     if os.path.isfile(masterfile_abs_path):
@@ -166,7 +168,7 @@ def encrypt_and_backup(src_rel_path, src_dir, backup_dir, enc_filename, password
     backup_abs_path = os.path.join(backup_dir, enc_filename)
 
     logging.log(5, "encrypt '" + src_rel_path + "'")
-    command.run(['gpg', '--passphrase-file', password_path, '--batch', '-o', tmp_abs_path, '-c', src_abs_path])
+    command.run(['gpg', '--personal-compress-preferences', 'BZIP2', '--symmetric', '--cipher-algo', 'AES-256', '--passphrase-file', password_path, '--batch', '-o', tmp_abs_path, '-c', src_abs_path])
 
     logging.log(5, "backup '" + enc_filename + "'")
     command.run(['mv', tmp_abs_path, backup_abs_path])
