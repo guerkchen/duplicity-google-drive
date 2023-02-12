@@ -154,3 +154,5 @@ test_manipulate_delete_restore()
 clean()
 create_files()
 test_moved_src_dir()
+
+clean()
